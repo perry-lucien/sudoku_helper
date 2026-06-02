@@ -8,4 +8,4 @@
 - 完全回退/重做
 - 键盘快捷键支持
 
-[在线使用](https://perry-lucien.github.io/sudoku-helper)
+[在线使用](https://perry-lucien.github.io/sudoku_helper/)
