@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数独辅助工具</title>
+    <style>
+        :root {
+            --cell-size: min(56px, calc((100vw - 60px) / 9));
+            --board-size: calc(var(--cell-size) * 9);
+            --candidate-size: calc(var(--cell-size) / 3.4);
+            --candidate-font: calc(var(--cell-size) / 4.5);
+            --determined-font: calc(var(--cell-size) / 1.8);
+            --border-thin: 1px solid #bbb;
+            --border-thick: 2.5px solid #444;
+            --bg-cell: #fdfdfd;
+            --bg-determined: #f0f4f8;
+            --bg-selected: #e3f0fb;
+            --bg-related: #f8f9fb;
+            --bg-same-number: #fff3cd;
+            --color-determined: #1a3a5c;
+            --color-candidate: #7a8a9a;
+            --color-candidate-single: #2e7d32;
+            --color-candidate-single-bg: #e8f5e9;
+            --color-btn-primary: #4a90d9;
+            --color-btn-danger: #e0756a;
+            --color-btn-warning: #f0a060;
+            --color-btn-success: #5b9a6b;
+            --color-mode-exclude: #e0756a;
+            --color-mode-fill: #4a90d9;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+            --radius: 8px;
+            --transition: 0.15s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+            background: #e8edf2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .app-container {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: clamp(16px, 3vw, 28px);
+            box-shadow: var(--shadow-md), 0 0 0 1px rgba(0, 0, 0, 0.04);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            max-width: 560px;
+            width: 100%;
+        }
+
+        .app-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            letter-spacing: 0.04em;
+            text-align: center;
+            margin: 0;
+        }
+        .app-subtitle {
+            font-size: 0.8rem;
+            color: #8899aa;
+            font-weight: 400;
+            letter-spacing: 0.03em;
+            margin-top: -10px;
+            text-align: center;
+        }
+
+        /* 数独板 */
+        .board-wrapper {
+            position: relative;
+            background: #fff;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            padding: 4px;
+        }
+
+        .sudoku-board {
+            display: grid;
+            grid-template-columns: repeat(9, var(--cell-size));
+            grid-template-rows: repeat(9, var(--cell-size));
+            border-left: var(--border-thick);
+            border-top: var(--border-thick);
+            background: #ddd;
+            gap: 0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background: var(--bg-cell);
+            border-right: var(--border-thin);
+            border-bottom: var(--border-thin);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: background var(--transition);
+        }
+
+        /* 3x3宫格加粗边框 */
+        .cell.border-right-bold {
+            border-right: var(--border-thick);
+        }
+        .cell.border-bottom-bold {
+            border-bottom: var(--border-thick);
+        }
+
+        /* 格子状态样式 */
+        .cell.determined {
+            background: var(--bg-determined);
+        }
+        .cell.selected {
+            background: var(--bg-selected) !important;
+            z-index: 1;
+            box-shadow: inset 0 0 0 2.5px #4a90d9;
+            border-radius: 1px;
+        }
+        .cell.related {
+            background: var(--bg-related);
+        }
+        .cell.same-number-highlight {
+            background: var(--bg-same-number);
+        }
+        .cell.contradiction {
+            background: #fff0f0 !important;
+            box-shadow: inset 0 0 0 2px #e0756a;
+            border-radius: 1px;
+            z-index: 1;
+        }
+
+        /* 确定数字 */
+        .determined-value {
+            font-size: var(--determined-font);
+            font-weight: 700;
+            color: var(--color-determined);
+            line-height: 1;
+            pointer-events: none;
+            letter-spacing: -0.02em;
+        }
+
+        /* 候选数字网格 */
+        .candidates-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 100%;
+            height: 100%;
+            padding: 2px;
+            gap: 0;
+        }
+
+        .candidate-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--candidate-font);
+            font-weight: 500;
+            color: var(--color-candidate);
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all var(--transition);
+            line-height: 1;
+            min-width: 0;
+            min-height: 0;
+            position: relative;
+            z-index: 2;
+        }
+
+        .candidate-item:hover {
+            background: #e8edf4;
+            color: #3a5068;
+            transform: scale(1.08);
+            font-weight: 600;
+        }
+        .candidate-item:active {
+            background: #d0dae6;
+            transform: scale(0.94);
+        }
+        .candidate-item.absent {
+            color: transparent;
+            pointer-events: none;
+            cursor: default;
+        }
+
+        /* 只剩一个候选数字时高亮 */
+        .candidate-item.single-candidate {
+            color: var(--color-candidate-single);
+            font-weight: 700;
+            background: var(--color-candidate-single-bg);
+            border-radius: 4px;
+            animation: pulse-hint 2s ease-in-out infinite;
+        }
+        @keyframes pulse-hint {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.25);
+            }
+            50% {
+                box-shadow: 0 0 0 6px rgba(46, 125, 50, 0);
+            }
+        }
+
+        /* 数字按钮栏 */
+        .number-pad {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: var(--board-size);
+        }
+        .num-btn {
+            width: calc((var(--board-size) - 8 * 6px) / 9);
+            height: 40px;
+            min-width: 34px;
+            max-width: 52px;
+            flex: 1 0 auto;
+            border-radius: 8px;
+            border: 1.5px solid #dde3ea;
+            background: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #4a5568;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 0.02em;
+        }
+        .num-btn:hover {
+            background: #f0f4f8;
+            border-color: #bcc8d6;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+        .num-btn:active {
+            background: #e2e8f0;
+            transform: scale(0.95);
+            transition: all 0.08s ease;
+        }
+        .num-btn.disabled-num {
+            opacity: 0.35;
+            pointer-events: none;
+            background: #f5f6f7;
+            border-color: #e8ecf0;
+            color: #c0c8d2;
+        }
+        .num-btn.in-candidates {
+            border-color: #4a90d9;
+            color: #4a90d9;
+            background: #f5f9fd;
+        }
+        .num-btn.hint-available {
+            animation: subtle-glow 1.8s ease-in-out infinite;
+        }
+        @keyframes subtle-glow {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(74, 144, 217, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(74, 144, 217, 0);
+            }
+        }
+
+        /* 操作按钮栏 */
+        .action-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: var(--board-size);
+        }
+        .action-btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: var(--shadow-sm);
+        }
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        .action-btn:active {
+            transform: scale(0.96);
+            transition: all 0.08s ease;
+        }
+        .action-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            pointer-events: none;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-undo {
+            background: #fff;
+            color: #4a5568;
+            border: 1.5px solid #dde3ea;
+        }
+        .btn-redo {
+            background: #fff;
+            color: #4a5568;
+            border: 1.5px solid #dde3ea;
+        }
+        .btn-auto-exclude {
+            background: #fff;
+            color: #5b9a6b;
+            border: 1.5px solid #c3d9c8;
+        }
+        .btn-mode {
+            background: var(--color-mode-exclude);
+            color: #fff;
+            font-weight: 700;
+            min-width: 100px;
+            justify-content: center;
+        }
+        .btn-mode.fill-mode {
+            background: var(--color-mode-fill);
+        }
+        .btn-reset {
+            background: #fff;
+            color: #e0756a;
+            border: 1.5px solid #f0c8c3;
+        }
+        .btn-clear-cell {
+            background: #fff;
+            color: #e0756a;
+            border: 1.5px solid #f0c8c3;
+        }
+
+        /* Toast提示 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-120px);
+            background: #2c3e50;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 1000;
+            pointer-events: none;
+            transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 响应式 */
+        @media (max-width: 500px) {
+            :root {
+                --cell-size: calc((100vw - 56px) / 9);
+            }
+            .app-container {
+                padding: 12px 8px;
+                gap: 12px;
+                border-radius: 12px;
+            }
+            .app-title {
+                font-size: 1.2rem;
+            }
+            .action-btn {
+                padding: 8px 10px;
+                font-size: 0.78rem;
+                gap: 3px;
+            }
+            .num-btn {
+                height: 34px;
+                font-size: 0.85rem;
+                border-radius: 6px;
+            }
+            .action-bar {
+                gap: 5px;
+            }
+        }
+
+        @media (max-width: 370px) {
+            :root {
+                --cell-size: calc((100vw - 44px) / 9);
+            }
+            .app-container {
+                padding: 8px 4px;
+                gap: 8px;
+            }
+            .action-btn {
+                padding: 6px 7px;
+                font-size: 0.7rem;
+            }
+            .num-btn {
+                height: 28px;
+                font-size: 0.75rem;
+                border-radius: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <h1 class="app-title">🧩 数独辅助工具</h1>
+        <p class="app-subtitle">点击候选数字排除 · 右键或切换模式填入 · 支持回退</p>
+
+        <!-- 数独板 -->
+        <div class="board-wrapper">
+            <div class="sudoku-board" id="sudokuBoard"></div>
+        </div>
+
+        <!-- 数字按钮 1-9 -->
+        <div class="number-pad" id="numberPad"></div>
+
+        <!-- 操作按钮 -->
+        <div class="action-bar">
+            <button class="action-btn btn-undo" id="btnUndo" disabled title="回退 (Ctrl+Z)">
+                ↩ 回退
+            </button>
+            <button class="action-btn btn-redo" id="btnRedo" disabled title="重做 (Ctrl+Y)">
+                ↪ 重做
+            </button>
+            <button class="action-btn btn-mode" id="btnMode" title="切换模式：排除/填入">
+                🚫 排除模式
+            </button>
+            <button class="action-btn btn-auto-exclude" id="btnAutoExclude" title="根据已确定数字自动排除候选">
+                🔍 自动排除
+            </button>
+            <button class="action-btn btn-clear-cell" id="btnClearCell" title="清除选中格子的确定数字">
+                ✕ 清除格子
+            </button>
+            <button class="action-btn btn-reset" id="btnReset" title="重置整个数独板">
+                🔄 重置
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (function() {
+            // ============ DOM 元素 ============
+            const boardEl = document.getElementById('sudokuBoard');
+            const numberPadEl = document.getElementById('numberPad');
+            const btnUndo = document.getElementById('btnUndo');
+            const btnRedo = document.getElementById('btnRedo');
+            const btnMode = document.getElementById('btnMode');
+            const btnAutoExclude = document.getElementById('btnAutoExclude');
+            const btnClearCell = document.getElementById('btnClearCell');
+            const btnReset = document.getElementById('btnReset');
+            const toastEl = document.getElementById('toast');
+
+            // ============ 状态 ============
+            // board[row][col]: number (1-9) 表示已确定, Set 表示候选数字集合
+            let board = [];
+            let selectedRow = null;
+            let selectedCol = null;
+            let currentMode = 'exclude'; // 'exclude' | 'fill'
+            let undoStack = [];
+            let redoStack = [];
+            let toastTimer = null;
+
+            // ============ 初始化 ============
+            function createInitialBoard() {
+                const b = [];
+                for (let r = 0; r < 9; r++) {
+                    b[r] = [];
+                    for (let c = 0; c < 9; c++) {
+                        b[r][c] = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                    }
+                }
+                return b;
+            }
+
+            function resetState() {
+                board = createInitialBoard();
+                selectedRow = null;
+                selectedCol = null;
+                undoStack = [];
+                redoStack = [];
+                currentMode = 'exclude';
+                updateModeButton();
+                updateUndoRedoButtons();
+                updateClearCellButton();
+                renderAll();
+            }
+
+            // ============ 深拷贝工具 ============
+            function copyBoardState(b) {
+                const copy = [];
+                for (let r = 0; r < 9; r++) {
+                    copy[r] = [];
+                    for (let c = 0; c < 9; c++) {
+                        const val = b[r][c];
+                        if (val instanceof Set) {
+                            copy[r][c] = new Set(val);
+                        } else {
+                            copy[r][c] = val;
+                        }
+                    }
+                }
+                return copy;
+            }
+
+            function boardStateForCell(r, c) {
+                const val = board[r][c];
+                if (val instanceof Set) {
+                    return new Set(val);
+                } else {
+                    return val;
+                }
+            }
+
+            // ============ 操作记录 ============
+            function pushUndo(actionRecord) {
+                undoStack.push(actionRecord);
+                redoStack = []; // 新操作清空重做栈
+                updateUndoRedoButtons();
+            }
+
+            function undo() {
+                if (undoStack.length === 0) return false;
+                const record = undoStack.pop();
+                redoStack.push(record);
+                applyReverseAction(record);
+                updateUndoRedoButtons();
+                updateClearCellButton();
+                return true;
+            }
+
+            function redo() {
+                if (redoStack.length === 0) return false;
+                const record = redoStack.pop();
+                undoStack.push(record);
+                applyForwardAction(record);
+                updateUndoRedoButtons();
+                updateClearCellButton();
+                return true;
+            }
+
+            function applyReverseAction(record) {
+                // 恢复主格子的旧状态
+                board[record.row][record.col] = record.oldState;
+
+                // 恢复自动排除（将候选数字加回去）
+                if (record.autoRemovals && record.autoRemovals.length > 0) {
+                    for (const ar of record.autoRemovals) {
+                        const cellState = board[ar.row][ar.col];
+                        if (cellState instanceof Set) {
+                            cellState.add(ar.value);
+                        }
+                    }
+                }
+
+                // 如果撤销的是 setValue，且当前选中格子是相关格子，保持选中
+                if (selectedRow === record.row && selectedCol === record.col) {
+                    if (!(board[record.row][record.col] instanceof Set)) {
+                        // 撤销后变为候选状态，保持选中
+                    }
+                }
+                renderAll();
+            }
+
+            function applyForwardAction(record) {
+                // 应用主操作
+                board[record.row][record.col] = record.newState;
+
+                // 应用自动排除
+                if (record.autoRemovals && record.autoRemovals.length > 0) {
+                    for (const ar of record.autoRemovals) {
+                        const cellState = board[ar.row][ar.col];
+                        if (cellState instanceof Set) {
+                            cellState.delete(ar.value);
+                        }
+                    }
+                }
+                renderAll();
+            }
+
+            function updateUndoRedoButtons() {
+                btnUndo.disabled = undoStack.length === 0;
+                btnRedo.disabled = redoStack.length === 0;
+            }
+
+            function updateClearCellButton() {
+                if (selectedRow !== null && selectedCol !== null) {
+                    const val = board[selectedRow][selectedCol];
+                    btnClearCell.disabled = !(typeof val === 'number');
+                } else {
+                    btnClearCell.disabled = true;
+                }
+            }
+
+            // ============ 核心操作 ============
+            function removeCandidate(row, col, value, recordInHistory = true) {
+                const cellState = board[row][col];
+                if (!(cellState instanceof Set)) return false;
+                if (!cellState.has(value)) return false;
+
+                const oldState = new Set(cellState);
+                cellState.delete(value);
+                const newState = new Set(cellState);
+
+                if (recordInHistory) {
+                    pushUndo({
+                        row,
+                        col,
+                        value,
+                        oldState,
+                        newState,
+                        autoRemovals: [],
+                        type: 'removeCandidate'
+                    });
+                }
+                return true;
+            }
+
+            function setValue(row, col, value, recordInHistory = true) {
+                const cellState = board[row][col];
+                if (!(cellState instanceof Set)) return false;
+                if (!cellState.has(value)) return false;
+
+                const oldState = new Set(cellState);
+                const newState = value;
+                const autoRemovals = [];
+
+                // 执行自动排除
+                autoRemovals.push(...autoExcludeForValue(row, col, value, false));
+
+                board[row][col] = value;
+
+                if (recordInHistory) {
+                    pushUndo({
+                        row,
+                        col,
+                        value,
+                        oldState,
+                        newState,
+                        autoRemovals,
+                        type: 'setValue'
+                    });
+                }
+                return true;
+            }
+
+            function clearValue(row, col, recordInHistory = true) {
+                const cellState = board[row][col];
+                if (typeof cellState !== 'number') return false;
+
+                const oldState = cellState;
+                const clearedValue = cellState;
+
+                // 计算新的候选集合：{1-9} 减去同行列宫中已确定的数字
+                const newCandidateSet = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                const relatedCells = getRelatedCells(row, col);
+                for (const [rr, cc] of relatedCells) {
+                    const v = board[rr][cc];
+                    if (typeof v === 'number') {
+                        newCandidateSet.delete(v);
+                    }
+                }
+
+                board[row][col] = newCandidateSet;
+                const newState = new Set(newCandidateSet);
+
+                if (recordInHistory) {
+                    pushUndo({
+                        row,
+                        col,
+                        value: clearedValue,
+                        oldState,
+                        newState,
+                        autoRemovals: [],
+                        type: 'clearValue'
+                    });
+                }
+                return true;
+            }
+
+            function autoExcludeForValue(row, col, value, recordInHistory = true) {
+                const removals = [];
+                const relatedCells = getRelatedCells(row, col);
+
+                for (const [rr, cc] of relatedCells) {
+                    if (rr === row && cc === col) continue;
+                    const cellState = board[rr][cc];
+                    if (cellState instanceof Set && cellState.has(value)) {
+                        cellState.delete(value);
+                        removals.push({ row: rr, col: cc, value });
+                    }
+                }
+                return removals;
+            }
+
+            function getRelatedCells(row, col) {
+                const cells = new Set();
+                // 同行
+                for (let c = 0; c < 9; c++) {
+                    cells.add(`${row},${c}`);
+                }
+                // 同列
+                for (let r = 0; r < 9; r++) {
+                    cells.add(`${r},${col}`);
+                }
+                // 同宫
+                const boxRowStart = Math.floor(row / 3) * 3;
+                const boxColStart = Math.floor(col / 3) * 3;
+                for (let r = boxRowStart; r < boxRowStart + 3; r++) {
+                    for (let c = boxColStart; c < boxColStart + 3; c++) {
+                        cells.add(`${r},${c}`);
+                    }
+                }
+                // 转换回数组
+                const result = [];
+                for (const key of cells) {
+                    const [r, c] = key.split(',').map(Number);
+                    result.push([r, c]);
+                }
+                return result;
+            }
+
+            function autoExcludeAll() {
+                // 扫描整个板子，根据已确定数字执行自动排除
+                const allRemovals = [];
+                let totalRemoved = 0;
+
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const val = board[r][c];
+                        if (typeof val === 'number') {
+                            const removals = autoExcludeForValue(r, c, val, false);
+                            allRemovals.push(...removals);
+                            totalRemoved += removals.length;
+                        }
+                    }
+                }
+
+                if (totalRemoved > 0) {
+                    // 记录为一个复合操作
+                    pushUndo({
+                        row: -1,
+                        col: -1,
+                        value: 0,
+                        oldState: null,
+                        newState: null,
+                        autoRemovals: allRemovals,
+                        type: 'batchAutoExclude'
+                    });
+                    renderAll();
+                    showToast(`已自动排除 ${totalRemoved} 个候选数字`);
+                } else {
+                    showToast('没有可排除的候选数字');
+                }
+            }
+
+            // ============ 渲染 ============
+            function renderAll() {
+                renderBoard();
+                renderNumberPad();
+                updateClearCellButton();
+            }
+
+            function renderBoard() {
+                boardEl.innerHTML = '';
+
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.row = r;
+                        cell.dataset.col = c;
+
+                        // 3x3宫格边框
+                        if (c === 2 || c === 5) cell.classList.add('border-right-bold');
+                        if (r === 2 || r === 5) cell.classList.add('border-bottom-bold');
+
+                        const cellState = board[r][c];
+
+                        if (typeof cellState === 'number') {
+                            // 已确定数字
+                            cell.classList.add('determined');
+                            const valueEl = document.createElement('span');
+                            valueEl.classList.add('determined-value');
+                            valueEl.textContent = cellState;
+                            cell.appendChild(valueEl);
+                        } else {
+                            // 候选数字
+                            const candidatesGrid = document.createElement('div');
+                            candidatesGrid.classList.add('candidates-grid');
+                            const candidateCount = cellState.size;
+
+                            for (let num = 1; num <= 9; num++) {
+                                const item = document.createElement('span');
+                                item.classList.add('candidate-item');
+                                item.dataset.row = r;
+                                item.dataset.col = c;
+                                item.dataset.value = num;
+
+                                if (cellState.has(num)) {
+                                    item.textContent = num;
+                                    // 只剩一个候选数字时高亮
+                                    if (candidateCount === 1) {
+                                        item.classList.add('single-candidate');
+                                    }
+                                } else {
+                                    item.classList.add('absent');
+                                }
+                                candidatesGrid.appendChild(item);
+                            }
+                            cell.appendChild(candidatesGrid);
+                        }
+
+                        // 选中高亮
+                        if (selectedRow === r && selectedCol === c) {
+                            cell.classList.add('selected');
+                        }
+
+                        // 相关格子高亮（同行列宫）
+                        if (selectedRow !== null && selectedCol !== null &&
+                            (selectedRow === r || selectedCol === c ||
+                                (Math.floor(selectedRow / 3) === Math.floor(r / 3) &&
+                                    Math.floor(selectedCol / 3) === Math.floor(c / 3))) &&
+                            !(selectedRow === r && selectedCol === c)) {
+                            cell.classList.add('related');
+                        }
+
+                        // 相同确定数字高亮
+                        if (selectedRow !== null && selectedCol !== null &&
+                            typeof board[selectedRow][selectedCol] === 'number' &&
+                            typeof cellState === 'number' &&
+                            cellState === board[selectedRow][selectedCol] &&
+                            !(selectedRow === r && selectedCol === c)) {
+                            cell.classList.add('same-number-highlight');
+                        }
+
+                        // 矛盾检测：候选集合为空
+                        if (cellState instanceof Set && cellState.size === 0) {
+                            cell.classList.add('contradiction');
+                        }
+
+                        boardEl.appendChild(cell);
+                    }
+                }
+            }
+
+            function renderNumberPad() {
+                numberPadEl.innerHTML = '';
+                const isExcludeMode = currentMode === 'exclude';
+
+                for (let num = 1; num <= 9; num++) {
+                    const btn = document.createElement('button');
+                    btn.classList.add('num-btn');
+                    btn.textContent = num;
+                    btn.dataset.value = num;
+
+                    // 检查选中格子的状态
+                    let inCandidates = false;
+                    let isDisabled = false;
+
+                    if (selectedRow !== null && selectedCol !== null) {
+                        const cellState = board[selectedRow][selectedCol];
+                        if (cellState instanceof Set) {
+                            if (cellState.has(num)) {
+                                inCandidates = true;
+                            } else {
+                                if (isExcludeMode) {
+                                    isDisabled = true; // 排除模式下，不在候选集合中的数字不可操作
+                                }
+                            }
+                            // 填入模式下所有数字都可选
+                        } else {
+                            // 已确定格子，所有数字按钮都可用（用于重新填入，需先清除）
+                            isDisabled = isExcludeMode;
+                        }
+                    } else {
+                        // 未选中格子
+                        isDisabled = true;
+                    }
+
+                    if (inCandidates && isExcludeMode) {
+                        btn.classList.add('in-candidates');
+                    }
+                    if (isDisabled) {
+                        btn.classList.add('disabled-num');
+                    }
+                    // 如果候选只剩一个且就是这个数字
+                    if (selectedRow !== null && selectedCol !== null &&
+                        board[selectedRow][selectedCol] instanceof Set &&
+                        board[selectedRow][selectedCol].size === 1 &&
+                        board[selectedRow][selectedCol].has(num) && !isExcludeMode) {
+                        btn.classList.add('hint-available');
+                    }
+
+                    numberPadEl.appendChild(btn);
+                }
+            }
+
+            // ============ 事件处理 ============
+            boardEl.addEventListener('click', function(e) {
+                // 点击候选数字
+                const candidateItem = e.target.closest('.candidate-item');
+                if (candidateItem && !candidateItem.classList.contains('absent')) {
+                    const row = parseInt(candidateItem.dataset.row);
+                    const col = parseInt(candidateItem.dataset.col);
+                    const value = parseInt(candidateItem.dataset.value);
+
+                    selectCell(row, col);
+
+                    if (currentMode === 'exclude') {
+                        handleExcludeAction(row, col, value);
+                    } else {
+                        handleFillAction(row, col, value);
+                    }
+                    return;
+                }
+
+                // 点击格子（已确定数字的格子或空白区域）
+                const cell = e.target.closest('.cell');
+                if (cell) {
+                    const row = parseInt(cell.dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    const cellState = board[row][col];
+
+                    if (typeof cellState === 'number') {
+                        // 点击已确定格子：清除它
+                        selectCell(row, col);
+                        if (clearValue(row, col, true)) {
+                            renderAll();
+                            showToast(`已清除格子 (${row + 1}, ${col + 1}) 的数字 ${cellState}`);
+                        }
+                    } else {
+                        // 点击候选格子空白区域：选中
+                        selectCell(row, col);
+                        renderAll();
+                    }
+                    return;
+                }
+            });
+
+            // 右键点击候选数字：始终执行"填入"操作（与模式无关）
+            boardEl.addEventListener('contextmenu', function(e) {
+                const candidateItem = e.target.closest('.candidate-item');
+                if (candidateItem && !candidateItem.classList.contains('absent')) {
+                    e.preventDefault();
+                    const row = parseInt(candidateItem.dataset.row);
+                    const col = parseInt(candidateItem.dataset.col);
+                    const value = parseInt(candidateItem.dataset.value);
+                    selectCell(row, col);
+                    handleFillAction(row, col, value);
+                    return;
+                }
+
+                // 右键已确定格子也可以清除
+                const cell = e.target.closest('.cell');
+                if (cell) {
+                    const row = parseInt(cell.dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    const cellState = board[row][col];
+                    if (typeof cellState === 'number') {
+                        e.preventDefault();
+                        selectCell(row, col);
+                        if (clearValue(row, col, true)) {
+                            renderAll();
+                            showToast(`已清除格子 (${row + 1}, ${col + 1}) 的数字 ${cellState}`);
+                        }
+                    }
+                }
+            });
+
+            // 数字按钮点击
+            numberPadEl.addEventListener('click', function(e) {
+                const numBtn = e.target.closest('.num-btn');
+                if (!numBtn || numBtn.classList.contains('disabled-num')) return;
+                if (selectedRow === null || selectedCol === null) return;
+
+                const value = parseInt(numBtn.dataset.value);
+                const cellState = board[selectedRow][selectedCol];
+
+                if (typeof cellState === 'number') {
+                    // 已确定格子，先清除再操作
+                    clearValue(selectedRow, selectedCol, true);
+                    if (currentMode === 'exclude') {
+                        // 清除后变成候选集合，然后排除
+                        if (board[selectedRow][selectedCol] instanceof Set && board[selectedRow][selectedCol]
+                            .has(value)) {
+                            removeCandidate(selectedRow, selectedCol, value, true);
+                            showToast(`已排除候选数字 ${value}`);
+                        }
+                    } else {
+                        if (board[selectedRow][selectedCol] instanceof Set && board[selectedRow][selectedCol]
+                            .has(value)) {
+                            setValue(selectedRow, selectedCol, value, true);
+                            showToast(`已确定数字 ${value} 在 (${selectedRow + 1}, ${selectedCol + 1})`);
+                        }
+                    }
+                } else if (cellState instanceof Set) {
+                    if (currentMode === 'exclude') {
+                        if (cellState.has(value)) {
+                            removeCandidate(selectedRow, selectedCol, value, true);
+                            showToast(`已排除候选数字 ${value}`);
+                        }
+                    } else {
+                        if (cellState.has(value)) {
+                            setValue(selectedRow, selectedCol, value, true);
+                            showToast(`已确定数字 ${value} 在 (${selectedRow + 1}, ${selectedCol + 1})`);
+                        }
+                    }
+                }
+                renderAll();
+            });
+
+            function handleExcludeAction(row, col, value) {
+                const cellState = board[row][col];
+                if (cellState instanceof Set && cellState.has(value)) {
+                    removeCandidate(row, col, value, true);
+                    renderAll();
+                    // 检查是否只剩一个候选
+                    const updatedState = board[row][col];
+                    if (updatedState instanceof Set && updatedState.size === 1) {
+                        const lastNum = [...updatedState][0];
+                        showToast(`💡 格子 (${row + 1}, ${col + 1}) 只剩候选数字 ${lastNum}`);
+                    }
+                }
+            }
+
+            function handleFillAction(row, col, value) {
+                const cellState = board[row][col];
+                if (cellState instanceof Set && cellState.has(value)) {
+                    const autoRemovalCount = countAutoRemovals(row, col, value);
+                    setValue(row, col, value, true);
+                    renderAll();
+                    if (autoRemovalCount > 0) {
+                        showToast(
+                            `✅ 已确定数字 ${value} 在 (${row + 1}, ${col + 1})，自动排除 ${autoRemovalCount} 个候选`);
+                    } else {
+                        showToast(`✅ 已确定数字 ${value} 在 (${row + 1}, ${col + 1})`);
+                    }
+                }
+            }
+
+            function countAutoRemovals(row, col, value) {
+                let count = 0;
+                const relatedCells = getRelatedCells(row, col);
+                for (const [rr, cc] of relatedCells) {
+                    if (rr === row && cc === col) continue;
+                    const cellState = board[rr][cc];
+                    if (cellState instanceof Set && cellState.has(value)) {
+                        count++;
+                    }
+                }
+                return count;
+            }
+
+            function selectCell(row, col) {
+                selectedRow = row;
+                selectedCol = col;
+                updateClearCellButton();
+            }
+
+            // 清除选中格子按钮
+            btnClearCell.addEventListener('click', function() {
+                if (selectedRow === null || selectedCol === null) return;
+                const cellState = board[selectedRow][selectedCol];
+                if (typeof cellState === 'number') {
+                    const val = cellState;
+                    if (clearValue(selectedRow, selectedCol, true)) {
+                        renderAll();
+                        showToast(`已清除格子 (${selectedRow + 1}, ${selectedCol + 1}) 的数字 ${val}`);
+                    }
+                } else {
+                    showToast('当前格子未确定数字');
+                }
+            });
+
+            // ============ 按钮事件 ============
+            btnUndo.addEventListener('click', function() {
+                if (undo()) {
+                    showToast('已回退 ↩');
+                }
+            });
+
+            btnRedo.addEventListener('click', function() {
+                if (redo()) {
+                    showToast('已重做 ↪');
+                }
+            });
+
+            btnMode.addEventListener('click', function() {
+                currentMode = currentMode === 'exclude' ? 'fill' : 'exclude';
+                updateModeButton();
+                renderNumberPad();
+                const modeText = currentMode === 'exclude' ? '排除模式：点击候选数字将其移除' : '填入模式：点击候选数字将其确定';
+                showToast(modeText);
+            });
+
+            function updateModeButton() {
+                if (currentMode === 'exclude') {
+                    btnMode.textContent = '🚫 排除模式';
+                    btnMode.classList.remove('fill-mode');
+                } else {
+                    btnMode.textContent = '✏️ 填入模式';
+                    btnMode.classList.add('fill-mode');
+                }
+            }
+
+            btnAutoExclude.addEventListener('click', function() {
+                autoExcludeAll();
+            });
+
+            btnReset.addEventListener('click', function() {
+                if (undoStack.length === 0 && redoStack.length === 0 &&
+                    selectedRow === null && selectedCol === null) {
+                    // 检查是否所有格子都是初始候选状态
+                    let allInitial = true;
+                    for (let r = 0; r < 9 && allInitial; r++) {
+                        for (let c = 0; c < 9 && allInitial; c++) {
+                            const val = board[r][c];
+                            if (typeof val === 'number') { allInitial = false; break; }
+                            if (val instanceof Set && val.size !== 9) { allInitial = false; break; }
+                        }
+                    }
+                    if (allInitial) {
+                        showToast('板子已经是初始状态');
+                        return;
+                    }
+                }
+                if (confirm('确定要重置整个数独板吗？所有操作记录将丢失。')) {
+                    resetState();
+                    showToast('已重置数独板');
+                }
+            });
+
+            // ============ 键盘快捷键 ============
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+Z 回退
+                if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (undo()) showToast('已回退 ↩ (Ctrl+Z)');
+                    return;
+                }
+                // Ctrl+Y 或 Ctrl+Shift+Z 重做
+                if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
+                    e.preventDefault();
+                    if (redo()) showToast('已重做 ↪ (Ctrl+Y)');
+                    return;
+                }
+                // 数字键1-9
+                if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey) {
+                    const num = parseInt(e.key);
+                    if (selectedRow !== null && selectedCol !== null) {
+                        const cellState = board[selectedRow][selectedCol];
+                        if (cellState instanceof Set) {
+                            if (currentMode === 'exclude') {
+                                if (cellState.has(num)) {
+                                    removeCandidate(selectedRow, selectedCol, num, true);
+                                    renderAll();
+                                }
+                            } else {
+                                if (cellState.has(num)) {
+                                    setValue(selectedRow, selectedCol, num, true);
+                                    renderAll();
+                                    showToast(`✅ 已确定数字 ${num}`);
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                // Delete或Backspace清除选中格子
+                if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey) {
+                    if (selectedRow !== null && selectedCol !== null) {
+                        const cellState = board[selectedRow][selectedCol];
+                        if (typeof cellState === 'number') {
+                            const val = cellState;
+                            if (clearValue(selectedRow, selectedCol, true)) {
+                                renderAll();
+                                showToast(`已清除数字 ${val}`);
+                            }
+                        }
+                    }
+                    e.preventDefault();
+                    return;
+                }
+                // Escape取消选中
+                if (e.key === 'Escape') {
+                    selectedRow = null;
+                    selectedCol = null;
+                    renderAll();
+                    updateClearCellButton();
+                    showToast('已取消选中');
+                    return;
+                }
+                // M键切换模式
+                if (e.key === 'm' && !e.ctrlKey && !e.metaKey) {
+                    currentMode = currentMode === 'exclude' ? 'fill' : 'exclude';
+                    updateModeButton();
+                    renderNumberPad();
+                    showToast(currentMode === 'exclude' ? '切换到排除模式' : '切换到填入模式');
+                    return;
+                }
+                // 方向键移动选中
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !e.ctrlKey && !e
+                    .metaKey) {
+                    e.preventDefault();
+                    if (selectedRow === null || selectedCol === null) {
+                        selectedRow = 0;
+                        selectedCol = 0;
+                    } else {
+                        if (e.key === 'ArrowUp') selectedRow = Math.max(0, selectedRow - 1);
+                        if (e.key === 'ArrowDown') selectedRow = Math.min(8, selectedRow + 1);
+                        if (e.key === 'ArrowLeft') selectedCol = Math.max(0, selectedCol - 1);
+                        if (e.key === 'ArrowRight') selectedCol = Math.min(8, selectedCol + 1);
+                    }
+                    renderAll();
+                    updateClearCellButton();
+                    return;
+                }
+            });
+
+            // ============ Toast ============
+            function showToast(message) {
+                if (toastTimer) clearTimeout(toastTimer);
+                toastEl.textContent = message;
+                toastEl.classList.add('show');
+                toastTimer = setTimeout(() => {
+                    toastEl.classList.remove('show');
+                    toastTimer = null;
+                }, 1800);
+            }
+
+            // ============ 触摸长按处理（移动端填入） ============
+            let longPressTimer = null;
+            let longPressTarget = null;
+
+            boardEl.addEventListener('touchstart', function(e) {
+                const candidateItem = e.target.closest('.candidate-item');
+                if (candidateItem && !candidateItem.classList.contains('absent')) {
+                    longPressTarget = candidateItem;
+                    longPressTimer = setTimeout(() => {
+                        // 长按触发填入操作
+                        const row = parseInt(longPressTarget.dataset.row);
+                        const col = parseInt(longPressTarget.dataset.col);
+                        const value = parseInt(longPressTarget.dataset.value);
+                        selectCell(row, col);
+                        handleFillAction(row, col, value);
+                        longPressTarget = null;
+                        longPressTimer = null;
+                        // 触发振动反馈（如果支持）
+                        if (navigator.vibrate) {
+                            navigator.vibrate(15);
+                        }
+                    }, 500);
+                }
+            }, { passive: true });
+
+            boardEl.addEventListener('touchend', function(e) {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+                longPressTarget = null;
+            });
+
+            boardEl.addEventListener('touchmove', function(e) {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+                longPressTarget = null;
+            });
+
+            // ============ 启动应用 ============
+            function init() {
+                resetState();
+                renderAll();
+                updateModeButton();
+                updateUndoRedoButtons();
+                updateClearCellButton();
+                showToast('👆 点击候选数字排除 | 右键填入 | 长按(移动端)填入');
+            }
+
+            init();
+
+            // ============ 导出API（调试用） ============
+            window.sudokuHelper = {
+                getBoard: () => board,
+                getSelected: () => ({ row: selectedRow, col: selectedCol }),
+                getMode: () => currentMode,
+                getUndoStack: () => undoStack,
+                getRedoStack: () => redoStack,
+                undo,
+                redo,
+                reset: resetState,
+                setMode: (mode) => {
+                    if (mode === 'exclude' || mode === 'fill') {
+                        currentMode = mode;
+                        updateModeButton();
+                        renderNumberPad();
+                    }
+                },
+            };
+
+            console.log('🧩 数独辅助工具已就绪');
+            console.log('  - 左键点击候选数字：排除（排除模式）/ 填入（填入模式）');
+            console.log('  - 右键点击候选数字：始终填入');
+            console.log('  - 移动端长按候选数字：填入');
+            console.log('  - 点击已确定数字的格子：清除');
+            console.log('  - 键盘数字键1-9：对选中格子操作');
+            console.log('  - 方向键：移动选中格子');
+            console.log('  - Ctrl+Z / Ctrl+Y：回退 / 重做');
+            console.log('  - M键：切换模式');
+            console.log('  - Delete/Backspace：清除选中格子');
+            console.log('  - Esc：取消选中');
+            console.log('  - 数字按钮栏：对选中格子操作');
+        })();
+    </script>
+</body>
+</html>
